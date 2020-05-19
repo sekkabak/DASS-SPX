@@ -2,7 +2,7 @@ from Client import Client
 from KlientUI import Ui_MainWindow
 
 import sys
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtWidgets
 
 
 class Klient:
@@ -12,7 +12,6 @@ class Klient:
     def __init__(self):
         app = QtWidgets.QApplication(sys.argv)
         main_window = QtWidgets.QMainWindow()
-        # TODO zrobić dialog do wpisywania nazwy uzytkownika
         self.ui = Ui_MainWindow()
         self.ui.setupUi(main_window)
         self.setup_ui()
@@ -54,7 +53,8 @@ class Klient:
         elif res == 1:
             self.append_text_to_console("Rejestracja na serwerze NIE powiodła się")
         elif res == 2:
-            self.append_text_to_console("Rejestracja na serwerze NIE powiodła się, taka nazwa użytkownika jest już zajęta")
+            self.append_text_to_console("Rejestracja na serwerze NIE powiodła się, taka nazwa użytkownika jest już "
+                                        "zajęta")
         elif res == 3:
             self.append_text_to_console("Rejestracja na serwerze NIE powiodła się, błąd pobierania klucza serwera")
 
@@ -64,9 +64,6 @@ class Klient:
         # self.append_text_to_console("Klucz to:")
         # self.append_text_to_console("e: " + str(key.e))
         # self.append_text_to_console("n: " + str(key.n))
-
-
-
 
 
 if __name__ == "__main__":

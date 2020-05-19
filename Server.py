@@ -15,8 +15,7 @@ class Server:
     | 1 - pierwsze połączenie z serwerem czyli podanie swojej nazwy i klucza
     | 2 - poproszenie serwera o klucz innej osoby po wysłanej nazwie
     """
-    HOST = '127.0.0.1'
-    PORT = 44444
+    my_socket = ('127.0.0.1', 44444)
     sock = None
 
     key: RSA.RsaKey
@@ -32,7 +31,7 @@ class Server:
 
         print("Starting server")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((self.HOST, self.PORT))
+        self.sock.bind(self.my_socket)
         self._listen()
 
     def _listen(self):
@@ -43,7 +42,7 @@ class Server:
             self.sock.listen()
             conn, addr = self.sock.accept()
             with conn:
-                print('Connected by', addr)
+                print('Połączenie przychodzące z: ', addr)
 
                 code = conn.recv(1)
                 if int.from_bytes(code, 'big') == 1:
@@ -51,7 +50,7 @@ class Server:
                 elif int.from_bytes(code, 'big') == 2:
                     self._send_public_key_by_name(conn)
 
-                print('Connection closed', addr)
+                print('Połączenie zamknięte z:', addr)
 
     def _add_user(self, conn: socket):
         """
@@ -84,6 +83,7 @@ class Server:
         else:
             conn.send(Codes.ok)
 
+        print('Dodaję użytkownika: ', name)
         # wysłanie klucza publicznego
         conn.send(self.key.publickey().exportKey('DER'))
 
@@ -109,6 +109,7 @@ class Server:
         user = self._get_user_by_name(name)
         message = (user.key.publickey().export_key('DER'), user.sign)
         data = pickle.dumps(message)
+        print('Wysyłam użytkownikowi klucza użytkownika: ', user.name)
         conn.send(data)
         conn.close()
 

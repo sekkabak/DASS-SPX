@@ -17,10 +17,11 @@ class Ui_MainWindow(object):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.registerInServer = QtWidgets.QPushButton(self.centralwidget)
-        self.registerInServer.setGeometry(QtCore.QRect(500, 40, 121, 23))
+        self.registerInServer.setGeometry(QtCore.QRect(500, 40, 131, 23))
         self.registerInServer.setObjectName("registerInServer")
         self.label = QtWidgets.QLabel(self.centralwidget)
-        self.label.setGeometry(QtCore.QRect(630, 40, 101, 20))
+        self.label.setGeometry(QtCore.QRect(640, 40, 81, 21))
+        self.label.setText("")
         self.label.setObjectName("label")
         self.lineEdit = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit.setEnabled(True)
@@ -59,18 +60,7 @@ class Ui_MainWindow(object):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "Aplikacja klienta"))
         self.registerInServer.setText(_translate("MainWindow", "Zarejestruj na serwerze"))
-        self.label.setText(_translate("MainWindow", "NIE zarejestrowany"))
         self.label_2.setText(_translate("MainWindow", "Nazwa użytkonika z których chcesz się połączyć"))
         self.pushButton.setText(_translate("MainWindow", "Połącz"))
         self.label_3.setText(_translate("MainWindow", "{Message}"))
         self.label_4.setText(_translate("MainWindow", "Twoja nazwa"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui = Ui_MainWindow()
-    ui.setupUi(MainWindow)
-    MainWindow.show()
-    sys.exit(app.exec_())
