@@ -2,11 +2,12 @@ import pickle
 import socket
 import threading
 import time
+import queue
 
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.Random import get_random_bytes
-from Crypto.Cipher import DES, PKCS1_v1_5
+from Crypto.Cipher import PKCS1_v1_5, AES
 from Crypto.Signature import pkcs1_15
 
 from Codes import Codes
@@ -19,7 +20,9 @@ class Client:
     | 2 - poproszenie serwera o klucz innej osoby po wysłanej nazwie
     """
     server_socket = ('127.0.0.1', 44444)
-    my_socket = ('127.0.0.1', 44445)
+    client1_socket = ('127.0.0.1', 44445)
+    client2_socket = ('127.0.0.1', 44446)
+
     sock = None
     receive_sock = None
 
@@ -28,14 +31,15 @@ class Client:
     server_public_key: RSA.RsaKey
 
     is_registered = False
+    is_connected = False
 
-    consoleAppend: None
+    to_display = queue.Queue()
 
-    def __init__(self, name: str):
-        # TODO sprawdzić czy socket jest już używany
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.receive_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.receive_sock.bind(self.my_socket)
+    def __init__(self, name: str, port: int = 44445):
+        # TODO na sztywno
+        self.client1_socket = ('127.0.0.1', port)
+        if port == 44446:
+            self.client2_socket = ('127.0.0.1', 44445)
 
         # Generowanie klucza RSA
         self.key = RSA.generate(1024)
@@ -43,18 +47,19 @@ class Client:
         # przypisanie nazwy
         self.name = name
 
-        # nasłuchiwanie połączenie od innego użytkownika
-        self._set_contact_listener()
-
     def register_in_server(self):
         """
         Metoda obsługuje rejestrację na serwerze wyświetlając komunikaty
         """
+        self._socket_connect_to_server()
+
         res = self._register_in_server()
         if res == 0:
             self.is_registered = True
         else:
             self.is_registered = False
+
+        self.sock.close()
         return res
 
     def get_public_key_from_sever(self, username: str):
@@ -93,7 +98,6 @@ class Client:
         self.sock.close()
         return RSA.import_key(key)
 
-    # TODO dokończyć
     def connect_to_user(self, username: str):
         """
         Łączy sie z użytkownikiem po podanej nazwie użytkownika
@@ -101,20 +105,29 @@ class Client:
         | Zwraca:
         | 1 - jeśli połączenie zostało ustanowione,
         | -1 - błąd(nieokreślony),
+        | -2 - użytkownik nie odrzucił połączenie
         """
         b_key: RSA.RsaKey = self.get_public_key_from_sever(username)
-        if b_key is not RSA.RsaKey:
+        if type(b_key) is not RSA.RsaKey:
+            # TODO dodać kod o niepoprawnym kluczu
             return -1
 
-        K = get_random_bytes(1024)
+        self._socket_connect_to_client()
+        self.sock.send(Codes.connection_request)
+        if self.sock.recv(4) != Codes.ok:
+            return -2
+
+        K = get_random_bytes(16)
         K_key = RSA.generate(1024)
-        T_A = int(time.time())
+        T_A = str(int(time.time()))
         L = 3600  # jedna godzina w sekundach
 
-        cipher = DES.new(K, DES.MODE_OFB)
-        a = cipher.iv + cipher.encrypt(T_A)
+        cipher = AES.new(K, AES.MODE_EAX)
+        nonce = cipher.nonce
+        ciphertext, tag = cipher.encrypt_and_digest(T_A.encode("utf-8"))
+        a = (nonce, ciphertext, tag)
 
-        b = pickle.dumps((L, self.name, K_key))
+        b = pickle.dumps((L, self.name, K_key.export_key('DER')))
         h = SHA256.new(b)
         b_sign = pkcs1_15.new(self.key).sign(h)
 
@@ -122,9 +135,53 @@ class Client:
         h = SHA256.new(c)
         c_sign = pkcs1_15.new(K_key).sign(h)
 
-        pickle.dumps((a, b, b_sign, c, c_sign))
+        data = pickle.dumps((a, b, b_sign, c, c_sign))
+
+        self.sock.sendall(data)
+
+        if self.sock.recv(4) != Codes.ok:
+            return -1
+        self.is_connected = True
+        self.sock.close()
 
         return 1
+
+    def read_the_socket(self):
+        """
+        Nasłuchuje w pętli połączeń od innych użytkowników
+        """
+        thread = threading.Thread(target=self._read_the_socket)
+        thread.daemon = True
+        thread.start()
+
+    def _read_the_socket(self):
+        """
+        Metoda otwierana w wątku sprawdzająca czy spłyneło jakieś połączenie
+        """
+        self.to_display.put('Słucham ...')
+        self.receive_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.receive_sock.bind(self.client1_socket)
+        self.receive_sock.listen(3)
+        conn, addr = self.receive_sock.accept()
+        with conn:
+            self.to_display.put('Połączenie przychodzące z: ' + str(addr))
+
+            if conn.recv(4) == Codes.connection_request:
+                conn.send(Codes.ok)
+                res = self._receive_contact(conn.recv(4096))
+                self.to_display.put('Próba połączenia zakończona kodem: ' + str(res))
+                if res == 0:
+                    conn.send(Codes.ok)
+                    self.is_connected = True
+                    self.to_display.put("Połączenie zostało ustanowione")
+                else:
+                    conn.send(Codes.err)
+                    self.is_connected = False
+                    self.to_display.put("Połączenie NIE zostało ustanowione")
+
+            self.to_display.put('Połączenie zamknięte z:' + str(addr))
+        self.to_display.put('Już nie słucham')
+        self.receive_sock.close()
 
     def _register_in_server(self) -> int:
         """
@@ -137,7 +194,6 @@ class Client:
         | 2 - taka nazwa jest już zajęta
         | 3 - błąd otrzymywania klucza publicznego serwera
         """
-        self._socket_connect_to_server()
 
         # wysyła kod 1 czyli kod do rejestracji
         self.sock.send(bytes([1]))
@@ -145,58 +201,30 @@ class Client:
         self.sock.send(str.encode(self.name))
         # odpowiedz od serwera czy taka nazwa użytkownika jest jeszcze dostępna
         if self.sock.recv(4) == Codes.err:
-            self.sock.close()
             return 2
 
         # wysłanie klucza
         self.sock.send(self.key.publickey().exportKey('DER'))
         if self.sock.recv(4) == Codes.err:
-            self.sock.close()
             return 1
 
         # otrzymanie klucza publicznego serwera
         try:
             self.server_public_key = RSA.import_key(self.sock.recv(2048))
-        except:
-            self.sock.close()
+        except ValueError or IndexError or TypeError:
             return 3
-
-        # zamknięcie połączenia
-        self.sock.close()
 
         return 0
 
     def _verify_sign(self, sign, value) -> bool:
         """
-        Zwraca True jeśli podpis jest zgodny z klucze, w przeciwnym wypadku false
+        Zwraca True jeśli podpis jest zgodny z kluczem, w przeciwnym wypadku false
         """
         try:
             pkcs1_15.new(self.server_public_key).verify(SHA256.new(value), sign)
             return True
         except (ValueError, TypeError):
             return False
-
-    def _set_contact_listener(self):
-        """
-        Uruchamia metodę _listen co 5 sekund
-        """
-        threading.Timer(5.0, self._listen).start()
-
-    def _listen(self):
-        """
-        Nasłuchuje w pętli połączeń od innych użytkowników
-        """
-        print('lul')
-        self.receive_sock.listen()
-        conn, addr = self.receive_sock.accept()
-        with conn:
-            print('Connected by', addr)
-            # zrobić początek komunikacji
-            code = conn.recv(4)
-            # TODO zrobić odesłanie potwierdzenia
-            self._receive_contact(conn.recv(1024))
-            print('Connection closed', addr)
-        self._set_contact_listener()
 
     def _receive_contact(self, data):
         """
@@ -209,27 +237,37 @@ class Client:
         | -3 - przesłane dane są niepoprawne
         """
         a, b, b_sign, c, c_sign = pickle.loads(data)
-
+        b = pickle.loads(b)
         a_key: RSA.RsaKey = self.get_public_key_from_sever(b[1])
-        if a_key is not RSA.RsaKey:
+        if type(a_key) is not RSA.RsaKey:
             return -1
 
-        K = PKCS1_v1_5.new(self.key).decrypt(c)
-        T_A = DES.new(K, DES.MODE_OFB).decrypt(a)
+        K = PKCS1_v1_5.new(self.key).decrypt(c, None)
+        cipher = AES.new(K, AES.MODE_EAX, nonce=a[0])
+        plaintext = cipher.decrypt(a[1])
+        try:
+            cipher.verify(a[2])
+            T_A = int(plaintext)
+        except ValueError:
+            return -3
 
         if int(time.time()) > (T_A + b[0]):
             return -2
 
         try:
-            pkcs1_15.new(a_key).verify(SHA256.new(b), b_sign)
-            pkcs1_15.new(b[2]).verify(SHA256.new(c), c_sign)
+            # TODO przerobić _verify_sign
+            pkcs1_15.new(a_key).verify(SHA256.new(pickle.dumps(b)), b_sign)
+            pkcs1_15.new(RSA.import_key(b[2])).verify(SHA256.new(c), c_sign)
         except (ValueError, TypeError):
             return -3
 
         return 0
 
     def _socket_connect_to_server(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect(self.server_socket)
 
     def _socket_connect_to_client(self):
-        self.sock.connect(self.my_socket)
+        # TODO tak na sztywno :(
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect(self.client2_socket)
