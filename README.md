@@ -27,6 +27,7 @@ Do przetestowania działania protokołu należy uruchomić 3 skryptu pythona\
 `python Klient2.py`
 
 # Przykład działania
+![Uruchomienie](https://github.com/sekkabak/DASS-SPX/blob/master/Przechwytywanie.PNG "Logo Title Text 1")
 
 # Przydatne komendy
 pyuic5 -x Klient.ui -o KlientUI.py
