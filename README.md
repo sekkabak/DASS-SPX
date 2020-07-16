@@ -1,6 +1,6 @@
 # DASS-SPX
 
-Opis oraz implementacja protokołu DASS-SPX
+Opis oraz prosta implementacja protokołu DASS-SPX
 
 ## Geneza protokołu
 DASS - Distributed Authentication Security Service – usługa uwierzytelniania klient - klient oparta na kluczu publicznym. 
