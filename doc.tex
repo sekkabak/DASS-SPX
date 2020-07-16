@@ -1,0 +1,363 @@
+\documentclass[11pt]{article} 
+\renewcommand{\baselinestretch}{1.15}
+ 
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{algpseudocode}
+
+\usepackage[final]{listings}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+
+% \usepackage[ruled,linesnumbered]{algorithm2e}
+\usepackage{algorithm} 
+\usepackage{algpseudocode} 
+\usepackage{listings}
+
+\usepackage{geometry}
+
+\usepackage[final]{listings}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{polski}
+
+\begin{document}
+\lstset{language=Python} 
+
+\begin{titlepage}
+   \begin{center}
+       \vspace*{1cm}
+ 
+       \textbf{PK projekt: DASS/SPX} 
+            
+       \vspace{1.5cm}
+
+       \text{Kamila Biernacka, Cezary Bąk}\\
+       \vspace{1cm}
+       \text{Prowadzący: mgr inż. Tomasz Mazurkiewicz}
+
+       \vfill
+            
+       Marzec 2020
+            
+   \end{center}
+\end{titlepage}
+
+
+% \maketitle
+% \clearpage
+\section{Ogólny opis protokołu}
+\subsection{Geneza protokołu}
+DASS - Distributed Authentication Security Service – usługa uwierzytelniania klient - klient oparta na kluczu publicznym. Jej prototyp został użyty w protokole SPX, którego budowa i cele zbliżone są do protokołu Kerberos. Obsługuje on uwierzytelnianie użytkowników i podmiotów sieciowych, dystrybucję kluczy, ochronę danych w tranzycie danych, pojedyncze logowania, przekazywanie uprawnień na podstawie tożsamości, skalowalność do bardzo dużego środowiska.
+Pierwsze publikacje DASS/SPX pojawiły się na początku lat 90. XX w. DASS opisuje architekturę, natomiast Sphinx(SPX) odnosi się do implementacji protokołu.
+\subsection{Opis protokołu}
+\begin{enumerate}
+\item Alice i Bob generują klucze prywatne oraz publiczne i wysyłają publiczne do trzeciej zaufanej strony.
+\item Trzecia zaufana strona podpisuje otrzymane kopie kluczy publicznych. Podpis składa się z wykonania na wiadomości funkcji skrótu SHA-256, a następnie zaszyfrowania skrótu algorytmem RSA.
+\item Alice wysyła do trzeciej zaufanej strony wiadomość zawierającą nazwę Boba.
+\item Trzecia zaufana strona przesyła do Alice klucz publiczny Boba podpisany kluczem prywatnym trzeciej zaufanej strony.
+\item Alice dokonuje weryfikacji podpisu trzeciej zaufanej strony, sprawdzając, czy klucz, który otrzymała jest aktualnym kluczem publicznym Boba. Dalej generuje losowy klucz tajny i losowe klucz publiczny oraz klucz prywatny, szyfruje czas, używając do tego klucza tajnego, dokonuje podpisu okresu ważności klucza, swojego identyfikatora oraz losowego klucza przy użyciu swojego klucza prywatnego, dokonuje szyfrowania klucza tajnego za pomocą klucza publicznego Boba i podpisuje przy pomocy swojego losowego klucza prywatnego. Całość wysyła do Boba. Szyfrowanie asymetryczne odbywa się przy użyciu algorytmu RSA, do symetrycznego natomiast używany jest AES.
+\item Bob przesyła do trzeciej zaufanej strony wiadomość zawierającą nazwę Alice.
+\item Trzecia zaufana strona wysyła do Boba klucz publiczny Alice, który podpisała za pomocą swojego klucza prywatnego.
+\item Bob sprawdza podpis trzeciej zaufanej strony, by wiedzieć, że otrzymał aktualny klucz publiczny Alice, dokonuje sprawdzenia podpisu Alice i odtwarza jej losowy klucz prywatny, dokonuje sprawdzenia podpisu i odtwarza losowy klucz tajny Alice za pomocą swojego klucza prywatnego.
+\end{enumerate}
+\clearpage
+\subsection{Działanie algorytmu}
+Na rysunku przedstawiono działanie algorytmu DASS/SPX. Kolor różowy reprezentuje działania strony A, zielony strony B, a niebieski trzeciej zaufanej strony.\\
+\includegraphics[width=15cm]{diagram.png}
+
+
+Algorithm 1 to pseudokod rozpoczynający działanie protokołu. Został opisany w formie synchronicznej (liniowej), poszczególne komunikacje z innymi maszynami (B lub T) wykonują funkcje ,,$send\_to\_T$'' i ,,$send\_to\_B$''. Program czeka na odpowiedź pozostałych hostów, następnie kontynuuje wykonanie protokołu.\\
+Algorithm 1 reprezentuje kroki 1, 3 i 5 z opisu protokołu.
+
+\begin{algorithm}
+	\caption{Uwierzytelnianie użytkownika A względem B}
+	\begin{algorithmic}[1]
+	    \State // Użytkownik generuje parę kluczy (publiczny, prywatny)
+	    \State $\mathbf{p} = {random\_prime}(2^{512}-1,{False},2^{511})$
+	    \State $\mathbf{q} = {random\_prime}(2^{512}-1,{False},2^{511})$
+	    \State $\mathbf{public\_key, private\_key} = {generate\_keypair}(\mathbf{p}, \mathbf{q})$
+	    
+	    \State // Teraz wysyłamy nasz klucz do serwera który go podpisze, przechowa oraz odeśle swój klucz publiczny
+	    \State $\mathbf{T\_public\_key} = send\_to\_T(\mathbf{A\_name}, \mathbf{public\_key})$
+	    
+	    \State // Do T musimy wysłać nazwę użytkownika z którym chcemy się komunikować
+	    \State $\mathbf{B\_signed\_public\_key, B\_public\_key} = send\_to\_T(\mathbf{B\_name})$
+	    
+	    \State // Otrzymaliśmy klucz publiczny użytkownika z którym chcemy się komunikować oraz jego podpis wykonany przez T sprawdzamy teraz jego poprawność
+	    \If {$decrypt(\mathbf{T\_public\_key}, \mathbf{B\_signed\_public\_key}) != hash\_function(\mathbf{B\_public\_key})$}
+	        \State // Tutaj obsługujemy błąd niepoprawnego klucza
+	    \EndIf
+	    
+        \State // Teraz generujemy klucze które posłużą do szyfrowania pakietu danych który przekażemy bezpośrednio do B
+        \State $\mathbf{K} = getrandbits(512)$
+        \State $\mathbf{p} = {random\_prime}(2^{512}-1,{False},2^{511})$
+	    \State $\mathbf{q} = {random\_prime}(2^{512}-1,{False},2^{511})$
+	    \State $\mathbf{K\_public\_key, K\_private\_key} = {generate\_keypair}(\mathbf{p}, \mathbf{q})$
+	    
+	    \State // Tworzymy znacznik czasu oraz okres ważności klucza który będzie określał czy nasza wiadomość jest aktualna 
+	    \State $\mathbf{T\_A} = datetime.now()$
+	    \State // Jedna godzina
+        \State $\mathbf{L} = timedelta(hours=1)$
+
+        \State // Szyfrujemy teraz czas oraz podpisujemy zestaw danych który wyślemy do B
+        \State $\mathbf{a} = aes.encrypt(\mathbf{T\_A}, \mathbf{K})$
+        \State $\mathbf{b} = (\mathbf{L}, \mathbf{A\_name}, \mathbf{K\_public\_key}, \mathbf{K\_private\_key})$
+        \State $\mathbf{b\_sign} = encrypt(\mathbf{private\_key}, hash\_function(\mathbf{b}))$
+	    \State $\mathbf{c} = encrypt(\mathbf{B\_public\_key}, \mathbf{K}))$
+	    \State $\mathbf{c\_sign} = encrypt(\mathbf{K\_private\_key}, hash\_function(\mathbf{c})$
+	    
+        \State // Teraz wysyłamy wszystko do B i czekamy na jego odpowiedź
+        \State $\mathbf{respond} = send\_to\_B((a, b, c))$
+	\end{algorithmic} 
+\end{algorithm} 
+
+\clearpage
+Algorithm 2 to pseudokod napisany w sposób funkcyjny. Zawiera metody, które są wywoływane w zależności od podanych przez użytkowników zmiennych.\\
+Algorithm 2 reprezentuje kroki 2, 4 i 7 z opisu protokołu.
+
+\begin{algorithm}
+	\caption{Metody które zarządzają serwerem}
+	\begin{algorithmic}[1]
+	    \Procedure{init}{$ $}
+    	    \State // Serwer też posiada parę kluczy
+    	    \State $\mathbf{p} = {random\_prime}(2^{512}-1,{False},2^{511})$
+    	    \State $\mathbf{q} = {random\_prime}(2^{512}-1,{False},2^{511})$
+    	    \State $\mathbf{public\_key, private\_key} = {generate\_keypair}(\mathbf{p}, \mathbf{q})$
+        \EndProcedure
+        \Procedure{set\_public\_key}{$name, key$}
+            \State // Zapisuje nazwę użytkownika jego klucz publiczny oraz podpis w bazie
+            \State $\mathbf{users}.append((\mathbf{name}, \mathbf{key},   encrypt(\mathbf{public\_key}, hash\_function(\mathbf{key})))$
+            \State  $\textbf{return public\_key}$
+        \EndProcedure
+        \Procedure{send\_public\_key\_by\_name}{$name$}
+            \State // znajduje w bazie nazwę użytkownika oraz jego klucz
+            \State  $\textbf{return users.find(name=name)}$
+        \EndProcedure
+	\end{algorithmic}
+\end{algorithm}
+
+Algorithm 3 to część pseudokodu zawierająca program użytkowników A oraz B. Ten fragment służy jedynie do odpowiadania na próbę komunikacji i nie jest wykorzystywany do samodzielnej próby nawiązania połączenia.\\
+Algorithm 3 reprezentuje kroki 1, 6 i 8 z opisu protokołu.
+
+\begin{algorithm}
+	\caption{Uwierzytelnianie użytkownika A na maszynie B}
+	\begin{algorithmic}[1]
+	    \Procedure{init}{$ $}
+    	    \State // Zakładamy że ta procedura została już wcześniej wykonana
+    	    \State $\mathbf{p} = {random\_prime}(2^{512}-1,{False},2^{511})$
+    	    \State $\mathbf{q} = {random\_prime}(2^{512}-1,{False},2^{511})$
+    	    \State $\mathbf{public\_key, private\_key} = {generate\_keypair}(\mathbf{p}, \mathbf{q})$
+    	    \State $\mathbf{T\_public\_key} = send\_to\_T(\mathbf{A\_name}, \mathbf{public\_key})$
+        \EndProcedure
+	    \Procedure{receive\_contact}{$a, b, b\_sign, c, c\_sign$}
+	        \State $\mathbf{A\_signed\_public\_key, A\_public\_key} = send\_public\_key\_by\_name(b[1])$
+	        
+    	    \If {$decrypt(\mathbf{T\_public\_key}, \mathbf{A\_signed\_public\_key})!=hash\_function(\mathbf{A\_public\_key})$}
+    	        \State // Tutaj obsługujemy błąd niepoprawnego klucza
+    	        \State  $\textbf{return False}$
+    	    \EndIf
+	        \State $\mathbf{K} = decrypt(\mathbf{private\_key}, \mathbf{c}))$
+	        \State $\mathbf{T\_A} = decrypt(\mathbf{private\_key}, \mathbf{c}))$
+    	    \If {$datetime.now() > (T\_A + b[0])$}
+    	        \State // Tutaj obsługujemy błąd nieaktywnego klucza
+    	        \State  $\textbf{return False}$
+    	    \EndIf
+    	    \State // Sprawdzamy poprawność podpisów
+    	    \If {$decrypt(\mathbf{A\_public\_key}, \mathbf{b\_sign}) != hash\_function(\mathbf{b})$}
+    	        \State // Tutaj obsługujemy błąd niepoprawnego podpisu
+    	        \State  $\textbf{return False}$
+    	    \EndIf
+    	    \If {$decrypt(\mathbf{b[2]}, \mathbf{c\_sign}) != hash\_function(\mathbf{c})$}
+    	        \State // Tutaj obsługujemy błąd niepoprawnego podpisu
+    	        \State  $\textbf{return False}$
+    	    \EndIf
+    	    
+    	    \State  $\textbf{return True}$
+	    \EndProcedure
+	\end{algorithmic} 
+\end{algorithm}
+\clearpage
+\subsection{Przykład użycia SPX}
+A, B - Użytkownicy\\
+X - Serwer\\
+Użytkownik A chce się zalogować jako użytkownik B na maszynie X.\\
+B ustawił dostęp do logowania dla A na maszynie X na jego konto (B),\\
+więc A wyśle token weryfikacyjny SPX do X. X rozpatrzy token od A i wykona weryfikację oraz prześle AKCEPTUJ lub ODRZUĆ. Jeżeli podobna weryfikacja miała już miejsce, X w wiadomości AKCEPTUJ załączy tę informacje.\\
+Weryfikacja przez X polega na sprawdzeniu czy B pozwala na logowanie A na swoje konto po zakończeniu procesu weryfikacji.\\
+Możliwe jest otrzymanie wiadomości AKCEPTUJ (bazującej na tokenie), ale także odrzucenie dostępu użytkownika A do konta B.\\
+
+\clearpage
+\section{Opis implementacji}
+Implementacja została wykonana w języku Python z wykorzystaniem biblioteki ,,$pycryptodome$'' do celów kryptograficznych oraz ,,$PyQt5$'' do wizualizacji aplikacji.\\\\
+Skrypty uruchomieniowe:\\
+- Server.py - uruchamia aplikację serwera(konsolowo) nasłuchującą na porcie  44444;\\
+- Klient.py - uruchamia aplikację użytkownika(okienkowo) nasłuchującą na porcie 44445;\\
+- Klient2.py - uruchamia aplikację użytkownika(okienkowo) nasłuchującą na porcie 44446.\\
+\\
+Plik Server.py:\\
+- procedurę ,,$INIT$'' z algorytmu 2 dokumentacji reprezentuje metoda ,,$start$'' klasy \\Server, generuje ona klucze i rozpoczyna nasłuch wykonywany przez serwer.\\\\
+- procedurę ,,$SET\_PUBLIC\_KEY$'' z algorytmu 2 dokumentacji reprezentuje metoda ,,$\_add\_user$'' klasy Server, zbiera ona dane przysłane od użytkownika i zapisuje je w pamięci(nazywane będzie to dalej rejestracją). Korzysta z pomocniczej metody ,,$\_is\_name\_used$''(sprawdza, czy serwer zarejestrował już takiego użytkownika) oraz ,,$\_add\_user\_to\_list$''(dodaje nowego użytkownika do zbioru danych serwera).\\\\
+- procedurę ,,$SEND\_PUBLIC\_KEY\_BY\_NAME$'' z algorytmu 2 dokumentacji reprezentuje metoda ,,$\_send\_public\_key\_by\_name$'' klasy Server, wyszukuje ona nazwy użytkownika w zbiorze danych zapisanych przez serwer, odsyła klucz oraz jego podpis gdy nazwa zostanie znaleziona. Korzysta z pomocniczej metody ,,$\_is\_name\_used$'' oraz ,,$\_get\_user\_by\_name$''.\\\\
+Plik Client.py:\\
+- nie jest plikiem uruchomieniowym, posiada tylko klasę, na bazie której budowany jest potem program użytkownika(od strony komunikacji). W konstruktorze podawany jest por,t na jakim aplikacja ma zostać uruchomiona, co daje możliwość utworzenia przykładowych skryptów Klient3, Klient4, Klient5 ... i, przy małej modyfikacji klasy Client, uruchomienia implementacji protokołu dla dużej liczby użytkowników(tyle ile starczy portów).\\\\
+- metoda ,,$\_\_init\_\_$'' wykonuje linie 2,3,4 algorytmu 1 oraz procedurę ,,$INIT$'' algorytmu 3, czyli generację klucza publicznego oraz prywatnego użytkownika.\\\\
+- metoda ,,$register\_in\_server$''(wywołuje metodę ,,$\_register\_in\_server$'' która wykonuje główną pracę) wykonuje linię 6 algorytmu 1. Wysyła klucz publiczny oraz nazwę użytkownika, którą serwer zapisuje w pamięci, co nazwane jest rejestracją. W odpowiedzi otrzymuje klucz publiczny serwera.\\\\
+- metoda ,,$get\_public\_key\_from\_sever$'' realizuje linię 8-12 algorytmu 1. Wysyła do serwera nazwę użytkownika, z którym planuje się skontaktować i otrzymuje klucz prywatny w wiadomości zwrotnej. Po otrzymaniu kluczy weryfikuje je.\\\\
+-  metoda ,,$connect\_to\_user$'' realizuje linię 14-29(do końca) algorytmu 1. Rozpoczyna oraz kończy komunikację z użytkownikiem o nazwie podanej w parametrze ,,$username$''.\\\\
+-  metoda ,,$\_receive\_contact$'' opisana została jako procedura ,,$RECEIVE\_CONTACT$'' w algorytmie 3.\\\\
+- metody ,,$read\_the\_socket$'' i ,,$\_read\_the\_socket$'' są odpowiedzialne za utrzymywanie nasłuchu prowadzonego przez aplikację klienta otworzoną na danym porcie \\\\
+
+
+
+\clearpage
+\section{Weryfikacja formalna}
+Weryfikacja protokołu została wykona w Verifpalu. Zawiera opis protokołu w oferowanym przez Verifpal języku oraz zbiór pytań pozwalający znaleźć możliwe luki w protokole.
+\subsection{Kod źródłowy}
+\subsubsection{Analiza 1}
+attacker[active]\\\\
+principal Alice[\\
+knows private nameA, nameB\\
+generates pA\\
+$A = G^{pA}$\\
+]\\\\
+principal Bob[\\
+    knows private nameA, nameB\\
+	generates pB\\
+	$B = G^{pB}$\\
+ ]\\\\
+ principal Server[\\
+	generates pT\\
+	$T = G^{pT}$\\
+ ]\\\\
+ $Server -> Alice: T$\\
+ $Server -> Bob: T$\\
+ $Alice -> Server: A$\\
+ $Bob -> Server: B$\\\\
+principal Server[\\
+	hpka = SIGN(pT, A)	hpkb = SIGN(pT, B)\\
+ ]\\\\
+$Alice -> Server: nameB$\\
+ $Server -> Alice: B, hpkb$\\\\
+ principal Alice[\\
+	\_ = SIGNVERIF(T, B, hpkb)?\\
+	generates pub\_key\_a\\
+ 	$priv\_key\_a = G^{pub\_key\_a}$\\
+	generates secret\_key\_a\\
+ 	knows private time\\
+	enc\_time = ENC(secret\_key\_a, time)\\	
+	generates validity\\
+	pack = CONCAT(validity, nameA, pub\_key\_a, priv\_key\_a)\\
+	s\_pack = SIGN(pA, CONCAT(validity, nameA, pub\_key\_a, priv\_key\_a))\\
+	enc\_sec\_key = PKE\_ENC(B, secret\_key\_a)\\
+	sign\_enc\_sec\_key = SIGN(pub\_key\_a, enc\_sec\_key)\\
+ ]\\\\
+$Alice -> Bob: enc\_time, pack, s\_pack, enc\_sec\_key, sign\_enc\_sec\_key$\\
+ $Bob -> Server: nameA$\\
+ $Server -> Bob: A, hpka$\\\\
+ principal Bob[\\
+	\_ = SIGNVERIF(T, A, hpka)?\\
+	\_ = SIGNVERIF(A, pack, s\_pack)?\\
+	valid, namA, pu\_ke\_a, pri\_ke\_a = SPLIT(pack)\\
+	\_ = SIGNVERIF(pri\_ke\_a, enc\_sec\_key, sign\_enc\_sec\_key)?\\
+	sec\_key\_a = PKE\_DEC(pB, enc\_sec\_key)\\
+ ]\\\\
+ queries[\\
+ 	//confidentiality? pA\\
+	//confidentiality? pB\\	
+	//confidentiality? pT\\
+	confidentiality? pub\_key\_a\\
+	confidentiality? priv\_key\_a\\
+	confidentiality? secret\_key\_a\\
+	$authentication? Server -> Alice: B$\\
+	$//authentication? Server -> Bob: A$\\
+	$//authentication? Alice -> Bob: pack$\\
+	$//authentication? Alice -> Bob: enc\_sec\_key$\\
+	freshness? hpka\\
+	//freshness? hpkb\\
+	//freshness? s\_pack\\
+	//freshness? sign\_enc\_sec\_key\\
+	$authentication? Server -> Alice: B[\\
+	precondition[Alice -> Bob: pack]$\\
+	]\\
+ ]\\\\
+ 
+ \subsubsection{Analiza 2}
+ attacker[active]\\\\
+principal Alice[\\
+	knows private nameA, nameB\\
+	generates pA\\
+	$A = G^{pA}$\\
+]\\\\
+principal Bob[\\
+	knows private nameA, nameB\\
+	generates pB\\
+	$B = G^{pB}$\\
+]\\\\
+principal Server[\\
+	generates pT\\
+	$T = G^{pT}$\\
+]\\\\
+$Server -> Alice: [T]$\\
+$Server -> Bob: [T]$\\
+$Alice -> Server: [A]$\\
+$Bob -> Server: [B]$\\\\
+principal Server[\\
+	hpka = SIGN(pT, A)\\
+	hpkb = SIGN(pT, B)\\
+]\\\\
+$Alice -> Server: [nameB]$\\
+$Server -> Alice: [B], [hpkb]$\\\\
+principal Alice[\\
+	\_ = SIGNVERIF(T, B, hpkb)?\\
+	generates pub\_key\_a\\
+	$priv\_key\_a = G^{pub\_key\_a}$\\
+	generates secret\_key\_a\\
+	knows private time\\
+	enc\_time = ENC(secret\_key\_a, time)\\
+	generates validity\\
+	pack = CONCAT(validity, nameA, pub\_key\_a, priv\_key\_a)\\
+	s\_pack = SIGN(pA, CONCAT(validity, nameA, pub\_key\_a, priv\_key\_a))\\
+	enc\_sec\_key = PKE\_ENC(B, secret\_key\_a)\\
+	sign\_enc\_sec\_key = SIGN(pub\_key\_a, enc\_sec\_key)\\
+]\\\\
+$Alice -> Bob: [enc\_time], [pack], [s\_pack], [enc\_sec\_key], [sign\_enc\_sec\_key]$\\
+$Bob -> Server: [nameA]$\\
+$Server -> Bob: [A], [hpka]$\\\\
+principal Bob[\\
+	\_ = SIGNVERIF(T, A, hpka)?\\
+	\_ = SIGNVERIF(A, pack, s\_pack)?\\
+	valid, namA, pu\_ke\_a, pri\_ke\_a = SPLIT(pack)\\
+	\_ = SIGNVERIF(pri\_ke\_a, enc\_sec\_key, sign\_enc\_sec\_key)?\\
+	sec\_key\_a = PKE\_DEC(pB, enc\_sec\_key)\\
+]\\\\
+queries[\\
+	confidentiality? pA\\
+	confidentiality? pB\\
+	confidentiality? pT\\
+	confidentiality? pub\_key\_a\\
+	confidentiality? priv\_key\_a\\
+	confidentiality? secret\_key\_a\\
+	$authentication? Server -> Alice: B$\\
+	$authentication? Server -> Bob: A$\\
+	$authentication? Alice -> Bob: pack$\\
+	$authentication? Alice -> Bob: enc\_sec\_key$\\
+	freshness? hpka\\
+	freshness? hpkb\\
+	freshness? s\_pack\\
+	freshness? sign\_enc\_sec\_key\\
+	$authentication? Server -> Alice: B[\\
+	precondition[Alice -> Bob: pack]$\\
+	]\\
+]\\\\
+W analizie został wykorzystany atakujący aktywny, co pozwala zlokalizować miejsca czułe na ataki statystyczne i brutalne. Wiemy, że stosowany w algorytmie numer jeden AES jest odporny na ataki kryptoanalizy różnicowej oraz liniowej ze względu na stosowaną w nim funkcję substytucyjną o oryginalnej konstrukcji.
+
+\clearpage
+ 
+\subsection{Analiza protokołu}
+Pierwszą analizę przeprowadziliśmy na protokole pozwalającym atakującemu na manipulację wszystkimi przesyłanymi danymi. Ze względu na bardzo dużą liczbę prób atakującego, a tym samym zbyt dużą liczbę obliczeń, została zadana zmniejszona pula pytań. Atakującemu udało się uzyskać bez dodatkowych założeń losowy klucz publiczny Alice oraz jej losowy klucz prywatny.
+Gdyby atakujący zdobył klucz publiczny Boba oraz jego podpis przy użyciu klucza prywatnego Servera, to byłby w stanie uzyskać także losowy klucz tajny Alice, a ona wysłałaby paczkę z okresem ważności klucza, swoim identyfikatorem i losowymi kluczami prywatnym i publicznym do Boba. Przy tym samym założeniu mógłby w imieniu Servera wysłać Alice klucz publiczny Boba, a mimo to weryfikacja przebiegłaby pomyślnie. Kiedy atakujący zna podpis klucza publicznego Alice kluczem prywatnym Servera i podpis losowym kluczem publicznym Alice jej zaszyfrowanego klucza tajnego (szyfrowany kluczem publicznym Boba), to wartość podpisu klucza publicznego Alice nie jest świeża i może zostać użyta do ataku powtórzeniowego.\\
+Po tej analizie odebraliśmy atakującemu możliwość modyfikacji przesyłanych między stronami wartości i mogliśmy sobie pozwolić na rozszerzenie listy pytań. W tej sytuacji atakujący jest w stanie wejść w posiadanie tylko losowego klucza publicznego Alice oraz jej losowego klucza prywatnego.
+\\\\
+
+\end{document}
